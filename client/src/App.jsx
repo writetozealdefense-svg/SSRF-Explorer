@@ -6,6 +6,7 @@ import AuthGate from './components/AuthGate.jsx';
 import CustomBrowser from './components/CustomBrowser.jsx';
 import EndpointsView from './components/EndpointsView.jsx';
 import SsrfResults from './components/SsrfResults.jsx';
+import QuickChecks from './components/QuickChecks.jsx';
 import ReportView from './components/ReportView.jsx';
 
 const TABS = [
@@ -13,8 +14,9 @@ const TABS = [
   { id: 'auth',     label: '2. Authorize' },
   { id: 'browser',  label: '3. Browser' },
   { id: 'enum',     label: '4. Enumerate' },
-  { id: 'scan',     label: '5. API Security Scan' },
-  { id: 'report',   label: '6. Report' }
+  { id: 'quick',    label: '5. Authz / CORS (auto)' },
+  { id: 'scan',     label: '6. API Security Scan' },
+  { id: 'report',   label: '7. Report' }
 ];
 
 export default function App() {
@@ -23,6 +25,7 @@ export default function App() {
   const [authorized, setAuthorized] = useState(false);
   const [endpoints, setEndpoints] = useState([]);
   const [findings, setFindings] = useState([]);
+  const [quickFindings, setQuickFindings] = useState([]);
   // Kept across tabs so the Enumerate tab can reuse browser-captured traffic
   // even if the user navigates elsewhere after closing the browser window.
   const [capturedRequests, setCapturedRequests] = useState([]);
@@ -73,7 +76,8 @@ export default function App() {
         });
         setEndpoints(r.endpoints);
         log(`[auto] ${r.count} endpoints (${r.candidates} SSRF candidates) from recon`);
-        setTab('enum');
+        setQuickFindings([]);
+        setTab('quick');
       } catch (e) { log(`[auto] enumerate failed: ${e.message}`); }
     });
 
@@ -92,7 +96,8 @@ export default function App() {
         });
         setEndpoints(r.endpoints);
         log(`[enum] ${r.count} endpoints (${r.candidates} SSRF candidates) from browser capture`);
-        setTab('enum');
+        setQuickFindings([]);
+        setTab('quick');
       } catch (e) {
         log(`[enum] auto-enumerate failed: ${e.message}`);
       }
@@ -122,7 +127,7 @@ export default function App() {
               onClick={() => setTab(t.id)}
               disabled={
                 (t.id !== 'target' && !target) ||
-                ((t.id === 'enum' || t.id === 'scan' || t.id === 'browser') && !authorized)
+                (['enum', 'scan', 'browser', 'quick'].includes(t.id) && !authorized)
               }
             >
               {t.label}
@@ -171,7 +176,8 @@ export default function App() {
                 });
                 setEndpoints(e.endpoints);
                 log(`[auto] ${e.count} endpoints (${e.candidates} SSRF candidates)`);
-                setTab('enum');
+                setQuickFindings([]);
+                setTab('quick');
                 return;
               } catch (err) {
                 log(`[auto] Burp auto-load failed: ${err.message}. Launch the browser instead.`);
@@ -190,6 +196,16 @@ export default function App() {
             endpoints={endpoints}
             setEndpoints={setEndpoints}
             capturedRequests={capturedRequests}
+            log={log}
+          />
+        )}
+        {tab === 'quick' && target && (
+          <QuickChecks
+            target={target}
+            authorized={authorized}
+            endpoints={endpoints}
+            findings={quickFindings}
+            setFindings={setQuickFindings}
             log={log}
           />
         )}

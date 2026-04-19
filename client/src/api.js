@@ -28,5 +28,7 @@ export const api = {
   categories:   () => request('/ssrf/categories'),
   startScan:    (body) => request('/ssrf/scan',     { method: 'POST', body: JSON.stringify(body) }),
   scanStatus:   (id) => request(`/ssrf/status/${id}`),
-  report:       (body) => request('/report/generate', { method: 'POST', body: JSON.stringify(body) })
+  report:       (body) => request('/report/generate', { method: 'POST', body: JSON.stringify(body) }),
+  startQuickCheck: (body) => request('/quickcheck/run', { method: 'POST', body: JSON.stringify(body) }),
+  quickCheckStatus: (id) => request(`/quickcheck/status/${id}`)
 };
