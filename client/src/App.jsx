@@ -7,6 +7,7 @@ import CustomBrowser from './components/CustomBrowser.jsx';
 import EndpointsView from './components/EndpointsView.jsx';
 import SsrfResults from './components/SsrfResults.jsx';
 import QuickChecks from './components/QuickChecks.jsx';
+import AttackSurface from './components/AttackSurface.jsx';
 import ReportView from './components/ReportView.jsx';
 
 const TABS = [
@@ -14,9 +15,10 @@ const TABS = [
   { id: 'auth',     label: '2. Authorize' },
   { id: 'browser',  label: '3. Browser' },
   { id: 'enum',     label: '4. Enumerate' },
-  { id: 'quick',    label: '5. Authz / CORS (auto)' },
-  { id: 'scan',     label: '6. API Security Scan' },
-  { id: 'report',   label: '7. Report' }
+  { id: 'surface',  label: '5. Attack Surface' },
+  { id: 'quick',    label: '6. Authz / CORS (auto)' },
+  { id: 'scan',     label: '7. API Security Scan' },
+  { id: 'report',   label: '8. Report' }
 ];
 
 export default function App() {
@@ -77,7 +79,7 @@ export default function App() {
         setEndpoints(r.endpoints);
         log(`[auto] ${r.count} endpoints (${r.candidates} SSRF candidates) from recon`);
         setQuickFindings([]);
-        setTab('quick');
+        setTab('surface');
       } catch (e) { log(`[auto] enumerate failed: ${e.message}`); }
     });
 
@@ -97,7 +99,7 @@ export default function App() {
         setEndpoints(r.endpoints);
         log(`[enum] ${r.count} endpoints (${r.candidates} SSRF candidates) from browser capture`);
         setQuickFindings([]);
-        setTab('quick');
+        setTab('surface');
       } catch (e) {
         log(`[enum] auto-enumerate failed: ${e.message}`);
       }
@@ -127,7 +129,7 @@ export default function App() {
               onClick={() => setTab(t.id)}
               disabled={
                 (t.id !== 'target' && !target) ||
-                (['enum', 'scan', 'browser', 'quick'].includes(t.id) && !authorized)
+                (['enum', 'scan', 'browser', 'quick', 'surface'].includes(t.id) && !authorized)
               }
             >
               {t.label}
@@ -177,7 +179,7 @@ export default function App() {
                 setEndpoints(e.endpoints);
                 log(`[auto] ${e.count} endpoints (${e.candidates} SSRF candidates)`);
                 setQuickFindings([]);
-                setTab('quick');
+                setTab('surface');
                 return;
               } catch (err) {
                 log(`[auto] Burp auto-load failed: ${err.message}. Launch the browser instead.`);
@@ -197,6 +199,13 @@ export default function App() {
             setEndpoints={setEndpoints}
             capturedRequests={capturedRequests}
             log={log}
+          />
+        )}
+        {tab === 'surface' && target && (
+          <AttackSurface
+            endpoints={endpoints}
+            log={log}
+            onJumpToScan={() => setTab('scan')}
           />
         )}
         {tab === 'quick' && target && (
