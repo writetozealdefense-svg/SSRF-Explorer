@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 // Opens the customized browser window (separate BrowserWindow) routed through
 // Burp. Auto-fills credentials once it detects a login form on the target.
-export default function CustomBrowser({ target, authorized }) {
+export default function CustomBrowser({ target, authorized, reconStatus }) {
   const [state, setState] = useState('idle');
   const [err, setErr] = useState('');
 
@@ -14,7 +14,8 @@ export default function CustomBrowser({ target, authorized }) {
         proxyHost: target.burp.proxyHost,
         proxyPort: target.burp.proxyPort,
         username: target.username,
-        password: target.password
+        password: target.password,
+        scopeHosts: target.scopeHosts || []
       });
       setState(r.reused ? 'reused' : 'open');
     } catch (e) {
@@ -40,6 +41,22 @@ export default function CustomBrowser({ target, authorized }) {
         <span className="muted">Close the window to finish the crawl and enumerate.</span>
       </div>
       {state !== 'idle' && <div className="banner" style={{ marginTop: 12 }}>Browser: {state}</div>}
+      {reconStatus && (
+        <div className="banner" style={{ marginTop: 12 }}>
+          <b>Auto-recon:</b>{' '}
+          {reconStatus.phase === 'started' && <span>login detected → crawling…</span>}
+          {reconStatus.phase === 'progress' && (
+            <span>
+              pages {reconStatus.pages || 0} · queue {reconStatus.queued || 0} · dict-hits {reconStatus.dictHits || 0}
+              {reconStatus.lastUrl && <><br /><span className="code">{reconStatus.lastUrl}</span></>}
+            </span>
+          )}
+          {reconStatus.phase === 'done' && (
+            <span>finished — {reconStatus.stats?.crawled} URLs visited in {Math.round((reconStatus.stats?.elapsedMs || 0) / 1000)}s</span>
+          )}
+          {reconStatus.phase === 'error' && <span className="code">{reconStatus.message}</span>}
+        </div>
+      )}
       {err && <div className="banner err" style={{ marginTop: 12 }}>{err}</div>}
     </div>
   );

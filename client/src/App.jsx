@@ -26,6 +26,7 @@ export default function App() {
   // Kept across tabs so the Enumerate tab can reuse browser-captured traffic
   // even if the user navigates elsewhere after closing the browser window.
   const [capturedRequests, setCapturedRequests] = useState([]);
+  const [reconStatus, setReconStatus] = useState(null);
   const [tab, setTab] = useState('target');
   const [logLines, setLogLines] = useState([]);
 
@@ -46,6 +47,36 @@ export default function App() {
   // Endpoints tab so the user sees results immediately.
   useEffect(() => {
     if (!window.api || !window.api.onTraffic) return;
+    // Recon lifecycle — driven by the Electron main process after login
+    // detection. Phases: started → progress* → done.
+    const unsubStart = window.api.onReconStarted?.((payload) => {
+      setReconStatus({ phase: 'started', ...payload });
+      log(`[recon] started after login @ ${payload?.loggedInAt || 'unknown'}`);
+    });
+    const unsubProg = window.api.onReconProgress?.((p) => {
+      setReconStatus({ phase: 'progress', ...p });
+    });
+    const unsubReconLog = window.api.onReconLog?.((m) => log(`[recon] ${m}`));
+    const unsubErr = window.api.onReconError?.((p) => {
+      setReconStatus({ phase: 'error', message: p.message });
+      log(`[recon] error: ${p.message}`);
+    });
+    const unsubDone = window.api.onReconDone?.(async ({ stats, requests }) => {
+      setReconStatus({ phase: 'done', stats });
+      setCapturedRequests(requests || []);
+      log(`[recon] done — ${stats?.crawled} URLs, ${requests?.length || 0} captured requests`);
+      const t = targetRef.current;
+      if (!t || !authedRef.current || !requests || requests.length === 0) return;
+      try {
+        const r = await api.enumerate({
+          requests, scopeHosts: t.scopeHosts || [], targetId: t._id
+        });
+        setEndpoints(r.endpoints);
+        log(`[auto] ${r.count} endpoints (${r.candidates} SSRF candidates) from recon`);
+        setTab('enum');
+      } catch (e) { log(`[auto] enumerate failed: ${e.message}`); }
+    });
+
     const unsub = window.api.onTraffic(async ({ requests, targetUrl }) => {
       const t = targetRef.current;
       if (!t) { log(`[browser] closed with ${requests.length} requests — no target saved, discarded`); return; }
@@ -66,7 +97,14 @@ export default function App() {
         log(`[enum] auto-enumerate failed: ${e.message}`);
       }
     });
-    return unsub;
+    return () => {
+      unsub && unsub();
+      unsubStart && unsubStart();
+      unsubProg && unsubProg();
+      unsubReconLog && unsubReconLog();
+      unsubErr && unsubErr();
+      unsubDone && unsubDone();
+    };
   }, []);
 
   if (!user) return <LoginView onAuthed={setUser} />;
@@ -143,7 +181,7 @@ export default function App() {
           }} />
         )}
         {tab === 'browser' && target && (
-          <CustomBrowser target={target} authorized={authorized} />
+          <CustomBrowser target={target} authorized={authorized} reconStatus={reconStatus} />
         )}
         {tab === 'enum' && target && (
           <EndpointsView

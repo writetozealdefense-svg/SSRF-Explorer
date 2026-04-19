@@ -10,13 +10,16 @@ const { app, BrowserWindow, ipcMain, session, Menu, shell } = require('electron'
 const path = require('path');
 
 const { startServer } = require('../server/index.js');
+const { attachCdpCapture } = require('./cdpCapture.js');
+const { runRecon } = require('./recon.js');
 
 const isDev = process.env.VITE_DEV === '1';
 if (isDev) process.env.NODE_ENV = 'development';
 let mainWindow = null;
 let browserWindows = new Map(); // partition -> BrowserWindow
-let trafficByPartition = new Map(); // partition -> Map<requestId, capturedRequest>
+let trafficByPartition = new Map(); // partition -> Map<key, capturedRequest>
 let recorderAttached = new Set();   // partitions we've already wired webRequest listeners on
+let reconState = new Map();         // partition -> { running, scopeHosts, startUrl, targetUrl }
 
 // Intercept every HTTP(S) request the customized browser makes and capture
 // what the enumerator needs: method, URL, headers, body, status. Buffers are
@@ -120,6 +123,15 @@ ipcMain.handle('browser:open', async (_evt, opts) => {
   trafficByPartition.set(partition, new Map());
   attachRecorder(sess, partition);
 
+  // Remember the crawl config so `browser:logged-in` can kick off recon with
+  // the right scope + starting URL even though the IPC itself carries no ctx.
+  reconState.set(partition, {
+    running: false,
+    scopeHosts: opts.scopeHosts || [],
+    startUrl: opts.targetUrl,
+    targetUrl: opts.targetUrl
+  });
+
   const win = new BrowserWindow({
     width: 1200,
     height: 820,
@@ -134,6 +146,17 @@ ipcMain.handle('browser:open', async (_evt, opts) => {
   });
 
   browserWindows.set(partition, win);
+
+  // CDP attach on the visible window. This gives us response bodies on top
+  // of what webRequest already captures. Must happen after the webContents
+  // exists — which it does by this point.
+  try {
+    const r = attachCdpCapture(win.webContents, trafficByPartition.get(partition));
+    if (!r.ok) console.warn('[cdp] visible window attach failed:', r.error);
+  } catch (e) {
+    console.warn('[cdp] visible window attach threw:', e.message);
+  }
+
   win.on('closed', () => {
     browserWindows.delete(partition);
     const store = trafficByPartition.get(partition);
@@ -170,6 +193,52 @@ ipcMain.handle('browser:close', async (_evt, partition) => {
   if (w && !w.isDestroyed()) w.close();
   browserWindows.delete(partition);
   return { ok: true };
+});
+
+// Fired by the customized browser's preload when it detects a login
+// transition (password field vanished + URL changed after initial load).
+// Takes over: kicks off an automatic recon pass — BFS crawl of same-origin
+// links + dictionary fuzz — in a hidden window sharing the session.
+ipcMain.on('browser:logged-in', async (evt, payload) => {
+  const partition = evt.sender.session && `persist:${evt.sender.session.storagePath || ''}`;
+  // More reliable: find the visible window by matching sender.
+  let matchedPartition = null;
+  for (const [p, w] of browserWindows.entries()) {
+    if (!w.isDestroyed() && w.webContents.id === evt.sender.id) {
+      matchedPartition = p;
+      break;
+    }
+  }
+  if (!matchedPartition) return;
+  const state = reconState.get(matchedPartition);
+  if (!state || state.running) return;
+  state.running = true;
+
+  const notify = (channel, data) => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, data);
+  };
+  notify('recon:started', { targetUrl: state.targetUrl, loggedInAt: payload && payload.url });
+
+  try {
+    const store = trafficByPartition.get(matchedPartition) || new Map();
+    trafficByPartition.set(matchedPartition, store);
+    const result = await runRecon({
+      partition: matchedPartition,
+      startUrl: payload && payload.url ? payload.url : state.startUrl,
+      scopeHosts: state.scopeHosts,
+      store,
+      onProgress: (p) => notify('recon:progress', p),
+      onLog: (m) => notify('recon:log', m)
+    });
+    notify('recon:done', {
+      stats: result.stats,
+      requests: [...store.values()]
+    });
+  } catch (e) {
+    notify('recon:error', { message: String(e && e.message || e) });
+  } finally {
+    state.running = false;
+  }
 });
 
 app.whenReady().then(async () => {
