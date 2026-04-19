@@ -30,5 +30,7 @@ export const api = {
   scanStatus:   (id) => request(`/ssrf/status/${id}`),
   report:       (body) => request('/report/generate', { method: 'POST', body: JSON.stringify(body) }),
   startQuickCheck: (body) => request('/quickcheck/run', { method: 'POST', body: JSON.stringify(body) }),
-  quickCheckStatus: (id) => request(`/quickcheck/status/${id}`)
+  quickCheckStatus: (id) => request(`/quickcheck/status/${id}`),
+  buildEvidence: (body) => request('/evidence/build', { method: 'POST', body: JSON.stringify(body) }),
+  recordEvidence: (body) => request('/evidence/record', { method: 'POST', body: JSON.stringify(body) })
 };

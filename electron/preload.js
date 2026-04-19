@@ -21,5 +21,9 @@ contextBridge.exposeInMainWorld('api', {
   onReconLog: (cb) => subscribe('recon:log', cb),
   onReconDone: (cb) => subscribe('recon:done', cb),
   onReconError: (cb) => subscribe('recon:error', cb),
+  // Render an HTML evidence page off-screen and save a PNG screenshot plus
+  // the source HTML and metadata to reports/evidence/<session>/. Returns
+  // { ok, pngPath, htmlPath, jsonPath, sessionDir }.
+  captureEvidence: (opts) => ipcRenderer.invoke('evidence:capture', opts),
   platform: process.platform
 });

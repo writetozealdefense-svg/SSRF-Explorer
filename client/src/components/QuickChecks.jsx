@@ -10,8 +10,75 @@ export default function QuickChecks({ target, authorized, endpoints, findings, s
   const [err, setErr] = useState('');
   const [expanded, setExpanded] = useState({});
   const [filter, setFilter] = useState('all');
+  const [captured, setCaptured] = useState({});   // key -> { pngPath, htmlPath }
+  const [capturing, setCapturing] = useState(null); // index currently capturing
+  const [captureProgress, setCaptureProgress] = useState(null); // { done, total }
   const pollRef = useRef(null);
   const autoRanRef = useRef(false);
+
+  const endpointByFinding = (finding) => {
+    // finding.endpoint is "METHOD URL"; match on the templated url we stored.
+    const [m, u] = String(finding.endpoint).split(' ');
+    return (endpoints || []).find((ep) => ep.method === m && ep.url === u) || null;
+  };
+
+  const captureOne = async (finding, idx) => {
+    const key = `${finding.category}-${idx}`;
+    setCapturing(idx);
+    try {
+      const ep = endpointByFinding(finding);
+      const { html } = await api.buildEvidence({
+        finding,
+        endpoint: ep,
+        targetId: target._id,
+        config: {
+          timeoutSec: target.scan?.timeoutSec || 10,
+          proxy: `http://${target.burp.proxyHost}:${target.burp.proxyPort}`
+        }
+      });
+      const filename = `${finding.severity}-${finding.category}-${(finding.endpoint || '').replace(/\s+/g, '_')}-${idx}`;
+      const result = await window.api.captureEvidence({
+        html, filename,
+        meta: { finding, endpointSummary: ep ? { method: ep.method, url: ep.url } : null, capturedAt: new Date().toISOString() }
+      });
+      if (!result.ok) throw new Error(result.error || 'capture failed');
+      await api.recordEvidence({
+        targetId: target._id, finding,
+        pngPath: result.pngPath, htmlPath: result.htmlPath
+      }).catch(() => {});
+      setCaptured((prev) => ({ ...prev, [key]: result }));
+      log(`[evidence] captured ${result.pngPath}`);
+      return result;
+    } catch (e) {
+      log(`[evidence] capture failed: ${e.message}`);
+      setErr(`Capture failed: ${e.message}`);
+      return null;
+    } finally {
+      setCapturing(null);
+    }
+  };
+
+  const captureAllConfirmed = async () => {
+    if (!window.api?.captureEvidence) {
+      setErr('Screenshot capture requires the Electron shell.');
+      return;
+    }
+    const worklist = findings
+      .map((f, i) => ({ f, i }))
+      .filter(({ f }) => f.severity === 'Confirmed' || f.severity === 'Likely');
+    if (worklist.length === 0) {
+      log('[evidence] no Confirmed/Likely findings to capture');
+      return;
+    }
+    setCaptureProgress({ done: 0, total: worklist.length });
+    for (let idx = 0; idx < worklist.length; idx++) {
+      const { f, i } = worklist[idx];
+      await captureOne(f, i);
+      setCaptureProgress({ done: idx + 1, total: worklist.length });
+    }
+    log(`[evidence] batch done — ${worklist.length} artifacts saved`);
+    setTimeout(() => setCaptureProgress(null), 1500);
+  };
 
   useEffect(() => () => pollRef.current && clearInterval(pollRef.current), []);
 
@@ -77,6 +144,16 @@ export default function QuickChecks({ target, authorized, endpoints, findings, s
           {status && !status.finished && (
             <span className="muted">Progress: {status.done}/{status.total || '?'}</span>
           )}
+          <button
+            className="secondary"
+            onClick={captureAllConfirmed}
+            disabled={findings.length === 0 || !!captureProgress}
+            title="Re-run each Confirmed/Likely finding and save a PNG screenshot of the evidence page"
+          >
+            {captureProgress
+              ? `Capturing ${captureProgress.done}/${captureProgress.total}...`
+              : 'Capture all Confirmed/Likely → PNG'}
+          </button>
           <span style={{ flex: 1 }} />
           <label className="muted" style={{ margin: 0 }}>Filter</label>
           <select value={filter} onChange={(e) => setFilter(e.target.value)} style={{ width: 240 }}>
@@ -112,7 +189,20 @@ export default function QuickChecks({ target, authorized, endpoints, findings, s
                     <button className="secondary" onClick={() => setExpanded((p) => ({ ...p, [key]: !open }))}>
                       {open ? 'Hide' : 'View PoC'}
                     </button>
+                    <button
+                      className="secondary"
+                      onClick={() => captureOne(f, i)}
+                      disabled={capturing === i}
+                      title="Re-run the probe, render the evidence page, save a PNG screenshot"
+                    >
+                      {capturing === i ? 'Capturing...' : (captured[key] ? 'Re-capture' : 'Capture evidence')}
+                    </button>
                   </div>
+                  {captured[key] && (
+                    <div className="muted" style={{ marginTop: 4, fontSize: 11 }}>
+                      Saved: <span className="code">{captured[key].pngPath}</span>
+                    </div>
+                  )}
                   <div className="muted" style={{ marginTop: 4 }}>
                     {f.param} {f.scenario && <span className="tag">{f.scenario}</span>}
                     {(f.signals || []).map((s, j) => <span key={j} className="tag">{s}</span>)}

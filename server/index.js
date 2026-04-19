@@ -17,6 +17,7 @@ const enumerateRoutes = require('./routes/enumerate');
 const ssrfRoutes = require('./routes/ssrf');
 const reportRoutes = require('./routes/report');
 const quickcheckRoutes = require('./routes/quickcheck');
+const evidenceRoutes = require('./routes/evidence');
 
 async function startServer() {
   await db.connect(process.env.MONGODB_URI);
@@ -37,6 +38,7 @@ async function startServer() {
   app.use('/api/ssrf', ssrfRoutes);
   app.use('/api/report', reportRoutes);
   app.use('/api/quickcheck', quickcheckRoutes);
+  app.use('/api/evidence', evidenceRoutes);
 
   // Serve built React UI in production.
   const clientDist = path.join(__dirname, '..', 'client', 'dist');

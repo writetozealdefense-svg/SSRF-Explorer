@@ -12,6 +12,7 @@ const path = require('path');
 const { startServer } = require('../server/index.js');
 const { attachCdpCapture } = require('./cdpCapture.js');
 const { runRecon } = require('./recon.js');
+const { captureHtml } = require('./screenshotter.js');
 
 const isDev = process.env.VITE_DEV === '1';
 if (isDev) process.env.NODE_ENV = 'development';
@@ -186,6 +187,25 @@ ipcMain.handle('browser:open', async (_evt, opts) => {
   }
 
   return { ok: true, reused: false, partition };
+});
+
+// Capture an HTML evidence page to PNG. The renderer passes the HTML string
+// the server produced (see /api/evidence/build) plus a filename. We write
+// png + html + json into reports/evidence/<session>/ and return the paths.
+const EVIDENCE_SESSION = new Date().toISOString().replace(/[:.]/g, '-');
+ipcMain.handle('evidence:capture', async (_evt, payload) => {
+  try {
+    const sessionDir = path.join(process.cwd(), 'reports', 'evidence', EVIDENCE_SESSION);
+    const result = await captureHtml({
+      html: payload.html,
+      filename: payload.filename,
+      meta: payload.meta || {},
+      sessionDir
+    });
+    return { ok: true, ...result, sessionDir };
+  } catch (e) {
+    return { ok: false, error: String(e && e.message || e) };
+  }
 });
 
 ipcMain.handle('browser:close', async (_evt, partition) => {
