@@ -68,6 +68,10 @@ function classifySsrfProbe(probe, resp, ctx) {
     body: resp.body_excerpt,
     elapsedMs: resp.elapsed_ms || 0,
     baselineMs: ctx.baselineMs || null,
+    // Passing baseline body lets the detector suppress the biggest source
+    // of SSRF false positives: endpoints that return the same 200 regardless
+    // of what we put in the target parameter (classic header-ignored case).
+    baselineBody: ctx.baselineBody || '',
     oobHit
   });
   if (severity === 'None') return null;
