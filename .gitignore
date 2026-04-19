@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+package-lock.json
+client/node_modules/
+client/package-lock.json
+
+# Build artifacts
+client/dist/
+dist/
+build/
+out/
+
+# Electron stateful data — contains browser session cookies/localStorage for
+# any targets the tool has been pointed at. Must never be committed.
+profile/
+
+# Generated scan outputs may contain captured traffic + target data.
+reports/
+
+# Secrets
+.env
+.env.local
+*.pem
+*.key
+cacert.der
+
+# Python legacy
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+legacy-python/profile/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Claude Code workspace
+.claude/

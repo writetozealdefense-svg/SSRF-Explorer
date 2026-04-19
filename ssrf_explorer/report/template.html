@@ -1,0 +1,97 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>SSRF Explorer — Report</title>
+<style>
+  body { font: 14px/1.45 system-ui, sans-serif; margin: 24px; color: #222; }
+  h1 { margin-top: 0; }
+  .auth { background: #fff7d9; border: 1px solid #e0c667; padding: 12px 16px; border-radius: 6px; }
+  .meta { color: #666; font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eee; vertical-align: top; }
+  th { background: #f6f6f6; }
+  .sev-Confirmed { background: #fde4e4; }
+  .sev-Likely { background: #fff1dc; }
+  .sev-Possible { background: #eef5ff; }
+  code, pre { font-family: ui-monospace, Menlo, Consolas, monospace; background: #f5f5f5; padding: 2px 5px; border-radius: 3px; }
+  pre { padding: 10px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
+  details { margin: 4px 0; }
+  .tag { display: inline-block; padding: 1px 6px; border-radius: 10px; background: #eef; font-size: 11px; margin-right: 4px; }
+</style>
+</head>
+<body>
+<h1>SSRF Explorer — Report</h1>
+
+<div class="auth">
+  <b>Authorization attestation</b><br />
+  Operator: <code>{{ auth.operator }}</code><br />
+  Reference: <code>{{ auth.engagement_ref }}</code><br />
+  Timestamp (UTC): <code>{{ auth.timestamp }}</code><br />
+  Attested: <code>{{ auth.attested }}</code>
+</div>
+
+<p class="meta">
+  Target: <code>{{ target.url }}</code><br />
+  Scope: {% for h in target.scope_hosts %}<span class="tag">{{ h }}</span>{% endfor %}<br />
+  Burp proxy: <code>{{ burp.proxy_host }}:{{ burp.proxy_port }}</code><br />
+  OOB canary: <code>{{ scan.oob_canary_url or '—' }}</code><br />
+  Generated: <code>{{ generated_at }}</code>
+</p>
+
+<h2>Summary</h2>
+<ul>
+  <li>Endpoints enumerated: <b>{{ endpoints|length }}</b> ({{ candidates }} SSRF candidates)</li>
+  <li>Findings — Confirmed: <b>{{ counts.Confirmed }}</b>, Likely: <b>{{ counts.Likely }}</b>, Possible: <b>{{ counts.Possible }}</b></li>
+</ul>
+
+<h2>Findings</h2>
+{% if findings %}
+<table>
+<thead><tr>
+  <th>Severity</th><th>Endpoint</th><th>Param</th><th>Payload</th>
+  <th>Status</th><th>Elapsed</th><th>Signals</th>
+</tr></thead>
+<tbody>
+{% for f in findings %}
+  <tr class="sev-{{ f.severity }}">
+    <td><b>{{ f.severity }}</b></td>
+    <td><code>{{ f.endpoint }}</code></td>
+    <td><code>{{ f.param }}</code></td>
+    <td><code>{{ f.payload }}</code> <span class="tag">{{ f.payload_category }}</span></td>
+    <td>{{ f.status }}</td>
+    <td>{{ f.elapsed_ms }} ms</td>
+    <td>{% for s in f.signals %}<span class="tag">{{ s }}</span>{% endfor %}</td>
+  </tr>
+  <tr class="sev-{{ f.severity }}">
+    <td colspan="7">
+      <details><summary>Response excerpt / redirect / error</summary>
+        {% if f.redirect %}<div>Redirect: <code>{{ f.redirect }}</code></div>{% endif %}
+        {% if f.error %}<div>Error: <code>{{ f.error }}</code></div>{% endif %}
+        <pre>{{ f.body_excerpt }}</pre>
+      </details>
+    </td>
+  </tr>
+{% endfor %}
+</tbody>
+</table>
+{% else %}
+<p><i>No SSRF signals observed.</i></p>
+{% endif %}
+
+<h2>Endpoint inventory</h2>
+<table>
+<thead><tr><th>Method</th><th>URL</th><th>Params</th><th>Score</th></tr></thead>
+<tbody>
+{% for e in endpoints %}
+  <tr>
+    <td><code>{{ e.method }}</code></td>
+    <td><code>{{ e.url }}</code></td>
+    <td>{% for p in e.params %}<span class="tag">{{ p.name }}@{{ p.location }}</span>{% endfor %}</td>
+    <td>{{ e.score }}</td>
+  </tr>
+{% endfor %}
+</tbody>
+</table>
+</body>
+</html>
